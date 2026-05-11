@@ -3,18 +3,18 @@
 //  abcMusic — Player básico de entrega
 //  play.abcmusic.tech/{uuid}
 // ──────────────────────────────────────────
- 
+
 $path = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
 $uuid = preg_replace('/[^a-f0-9\-]/i', '', $path);
- 
+
 if (strlen($uuid) !== 36) {
     http_response_code(404);
     die('Música não encontrada.');
 }
- 
+
 define('SUPABASE_URL', 'https://baltzukuszagxcgkfrpi.supabase.co');
 define('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhbHR6dWt1c3phZ3hjZ2tmcnBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTg4MjMsImV4cCI6MjA5Mjg5NDgyM30.gcRHTzssV3OsbObvnpnbROrrpA8Dn6zZz9j_qDJdw0s');
- 
+
 $api  = SUPABASE_URL . '/rest/v1/presentes?uuid=eq.' . urlencode($uuid) . '&limit=1';
 $ch   = curl_init($api);
 curl_setopt_array($ch, [
@@ -26,18 +26,15 @@ curl_setopt_array($ch, [
 ]);
 $resp = curl_exec($ch);
 curl_close($ch);
- 
+
 $rows = json_decode($resp, true);
 if (empty($rows)) {
     http_response_code(404);
     die('Música não encontrada.');
 }
- 
+
 $m         = $rows[0];
 $audio_url = htmlspecialchars($m['audio_url'] ?? '');
-$letra_raw = $m['letra'] ?? '';
-$letra     = nl2br(htmlspecialchars($letra_raw));
-$tem_letra = trim($letra_raw) !== '';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -50,7 +47,7 @@ $tem_letra = trim($letra_raw) !== '';
   <title>Sua música — abcMusic</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
- 
+
     body {
       min-height: 100dvh;
       background: #0d1a12;
@@ -62,7 +59,7 @@ $tem_letra = trim($letra_raw) !== '';
       justify-content: center;
       padding: 40px 20px;
     }
- 
+
     .content {
       width: 100%;
       max-width: 400px;
@@ -71,7 +68,7 @@ $tem_letra = trim($letra_raw) !== '';
       align-items: center;
       gap: 16px;
     }
- 
+
     /* ── Logo ── */
     .brand {
       font-size: 13px;
@@ -82,7 +79,7 @@ $tem_letra = trim($letra_raw) !== '';
       text-decoration: none;
       margin-bottom: 8px;
     }
- 
+
     /* ── Ícone animado ── */
     .music-icon {
       width: 72px;
@@ -105,7 +102,7 @@ $tem_letra = trim($letra_raw) !== '';
       0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.25); }
       50%       { box-shadow: 0 0 0 14px rgba(52,211,153,0); }
     }
- 
+
     /* ── Barras de onda (visíveis só ao tocar) ── */
     .wave {
       display: none;
@@ -122,7 +119,7 @@ $tem_letra = trim($letra_raw) !== '';
       animation: wave var(--d) ease-in-out infinite alternate;
     }
     @keyframes wave { from { height: 3px; } to { height: var(--h); } }
- 
+
     /* ── Player ── */
     .player {
       width: 100%;
@@ -131,7 +128,7 @@ $tem_letra = trim($letra_raw) !== '';
       border-radius: 20px;
       padding: 24px 20px 20px;
     }
- 
+
     .progress-area {
       margin-bottom: 18px;
       cursor: pointer;
@@ -158,7 +155,7 @@ $tem_letra = trim($letra_raw) !== '';
       color: rgba(255,255,255,0.35);
       font-variant-numeric: tabular-nums;
     }
- 
+
     .controls {
       display: flex;
       align-items: center;
@@ -176,7 +173,7 @@ $tem_letra = trim($letra_raw) !== '';
       align-items: center;
     }
     .btn-skip:hover { color: #34d399; }
- 
+
     .btn-play {
       width: 64px;
       height: 64px;
@@ -193,7 +190,7 @@ $tem_letra = trim($letra_raw) !== '';
     .btn-play:hover  { background: #2ebd87; }
     .btn-play:active { transform: scale(0.95); }
     .btn-play svg    { fill: #0d1a12; }
- 
+
     /* ── Botão baixar ── */
     .btn-download {
       display: flex;
@@ -212,42 +209,7 @@ $tem_letra = trim($letra_raw) !== '';
       transition: background 0.15s;
     }
     .btn-download:hover { background: rgba(52,211,153,0.15); }
- 
-    /* ── Letra ── */
-    .letra-section { width: 100%; }
-    .btn-letra {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 13px 16px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.6);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .btn-letra:hover { background: rgba(255,255,255,0.07); }
-    .btn-letra .arrow { transition: transform 0.25s; opacity: 0.4; }
-    .btn-letra.open .arrow { transform: rotate(180deg); }
- 
-    .letra-body {
-      display: none;
-      padding: 18px 16px;
-      font-size: 13px;
-      line-height: 2;
-      color: rgba(255,255,255,0.55);
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-top: none;
-      border-radius: 0 0 12px 12px;
-      white-space: pre-wrap;
-    }
-    .letra-body.open { display: block; }
- 
+
     /* ── Footer ── */
     footer {
       font-size: 11px;
@@ -256,22 +218,22 @@ $tem_letra = trim($letra_raw) !== '';
       margin-top: 8px;
     }
     footer a { color: #34d399; text-decoration: none; opacity: 0.6; }
- 
+
     audio { display: none; }
   </style>
 </head>
 <body>
 <div class="content">
- 
+
   <a class="brand" href="https://abcmusic.tech" target="_blank">abcMusic</a>
- 
+
   <!-- Ícone animado -->
   <div class="music-icon" id="musicIcon">
     <svg width="32" height="32" viewBox="0 0 24 24">
       <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
     </svg>
   </div>
- 
+
   <!-- Barras de onda -->
   <div class="wave" id="wave">
     <span style="--d:.5s;--h:14px"></span>
@@ -282,11 +244,11 @@ $tem_letra = trim($letra_raw) !== '';
     <span style="--d:.65s;--h:16px"></span>
     <span style="--d:.55s;--h:8px"></span>
   </div>
- 
+
   <!-- Player -->
   <div class="player">
     <audio id="audio" src="<?= $audio_url ?>" preload="metadata"></audio>
- 
+
     <div class="progress-area" id="progressArea">
       <div class="progress-bar">
         <div class="progress-fill" id="progressFill"></div>
@@ -296,19 +258,19 @@ $tem_letra = trim($letra_raw) !== '';
         <span id="timeDur">0:00</span>
       </div>
     </div>
- 
+
     <div class="controls">
       <button class="btn-skip" onclick="seek(-10)" aria-label="Voltar 10s">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/>
         </svg>
       </button>
- 
+
       <button class="btn-play" id="playBtn" onclick="togglePlay()" aria-label="Play/Pause">
         <svg id="iconPlay" width="28" height="28" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
         <svg id="iconPause" width="28" height="28" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
       </button>
- 
+
       <button class="btn-skip" onclick="seek(10)" aria-label="Avançar 10s">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/>
@@ -316,7 +278,7 @@ $tem_letra = trim($letra_raw) !== '';
       </button>
     </div>
   </div>
- 
+
   <!-- Baixar -->
   <a class="btn-download" href="<?= $audio_url ?>" download>
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -324,24 +286,11 @@ $tem_letra = trim($letra_raw) !== '';
     </svg>
     Baixar música (MP3)
   </a>
- 
-  <!-- Letra -->
-  <?php if ($tem_letra): ?>
-  <div class="letra-section">
-    <button class="btn-letra" id="btnLetra" onclick="toggleLetra()">
-      <span>Ver letra completa</span>
-      <svg class="arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M6 9l6 6 6-6"/>
-      </svg>
-    </button>
-    <div class="letra-body" id="letraBody"><?= $letra ?></div>
-  </div>
-  <?php endif; ?>
- 
+
   <footer>Feito com 💚 pela <a href="https://abcmusic.tech" target="_blank">abcMusic</a></footer>
- 
+
 </div>
- 
+
 <script>
   const audio      = document.getElementById('audio');
   const fill       = document.getElementById('progressFill');
@@ -351,56 +300,47 @@ $tem_letra = trim($letra_raw) !== '';
   const iconPause  = document.getElementById('iconPause');
   const musicIcon  = document.getElementById('musicIcon');
   const wave       = document.getElementById('wave');
- 
+
   function fmt(s) {
     s = Math.floor(s || 0);
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
- 
+
   audio.addEventListener('loadedmetadata', () => {
     timeDur.textContent = fmt(audio.duration);
   });
- 
+
   audio.addEventListener('timeupdate', () => {
     if (!audio.duration) return;
     fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
     timeNow.textContent = fmt(audio.currentTime);
   });
- 
+
   audio.addEventListener('ended', () => setPlaying(false));
- 
+
   function setPlaying(playing) {
     iconPlay.style.display  = playing ? 'none' : '';
     iconPause.style.display = playing ? ''     : 'none';
     musicIcon.classList.toggle('playing', playing);
     wave.classList.toggle('playing', playing);
   }
- 
+
   function togglePlay() {
     if (audio.paused) { audio.play(); setPlaying(true); }
     else              { audio.pause(); setPlaying(false); }
   }
- 
+
   function seek(d) {
     audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + d));
   }
- 
+
   document.getElementById('progressArea').addEventListener('click', function(e) {
     if (!audio.duration) return;
     const r = this.getBoundingClientRect();
     audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
   });
- 
-  function toggleLetra() {
-    const btn  = document.getElementById('btnLetra');
-    const body = document.getElementById('letraBody');
-    btn.classList.toggle('open');
-    body.classList.toggle('open');
-    btn.querySelector('span').textContent =
-      btn.classList.contains('open') ? 'Esconder letra' : 'Ver letra completa';
-  }
+
+
 </script>
 </body>
 </html>
- 
-

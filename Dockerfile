@@ -1,10 +1,5 @@
 FROM php:8.2-apache
-RUN a2enmod rewrite
+RUN a2enmod rewrite && \
+    sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 COPY . /var/www/html/
-RUN echo '<Directory /var/www/html>\n\
-    Options -Indexes\n\
-    AllowOverride All\n\
-    Require all granted\n\
-</Directory>' > /etc/apache2/conf-available/app.conf \
- && a2enconf app
 EXPOSE 80

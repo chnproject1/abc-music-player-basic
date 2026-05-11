@@ -1,0 +1,406 @@
+<?php
+// ──────────────────────────────────────────
+//  abcMusic — Player básico de entrega
+//  play.abcmusic.tech/{uuid}
+// ──────────────────────────────────────────
+ 
+$path = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
+$uuid = preg_replace('/[^a-f0-9\-]/i', '', $path);
+ 
+if (strlen($uuid) !== 36) {
+    http_response_code(404);
+    die('Música não encontrada.');
+}
+ 
+define('SUPABASE_URL', 'https://baltzukuszagxcgkfrpi.supabase.co');
+define('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhbHR6dWt1c3phZ3hjZ2tmcnBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTg4MjMsImV4cCI6MjA5Mjg5NDgyM30.gcRHTzssV3OsbObvnpnbROrrpA8Dn6zZz9j_qDJdw0s');
+ 
+$api  = SUPABASE_URL . '/rest/v1/presentes?uuid=eq.' . urlencode($uuid) . '&limit=1';
+$ch   = curl_init($api);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER     => [
+        'apikey: '               . SUPABASE_KEY,
+        'Authorization: Bearer ' . SUPABASE_KEY,
+    ],
+]);
+$resp = curl_exec($ch);
+curl_close($ch);
+ 
+$rows = json_decode($resp, true);
+if (empty($rows)) {
+    http_response_code(404);
+    die('Música não encontrada.');
+}
+ 
+$m         = $rows[0];
+$audio_url = htmlspecialchars($m['audio_url'] ?? '');
+$letra_raw = $m['letra'] ?? '';
+$letra     = nl2br(htmlspecialchars($letra_raw));
+$tem_letra = trim($letra_raw) !== '';
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta property="og:title"       content="Sua música especial 🎵">
+  <meta property="og:description" content="Uma música feita especialmente para você pela abcMusic.">
+  <meta name="theme-color"        content="#0d1a12">
+  <title>Sua música — abcMusic</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ 
+    body {
+      min-height: 100dvh;
+      background: #0d1a12;
+      color: #f0faf4;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+ 
+    .content {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+ 
+    /* ── Logo ── */
+    .brand {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: #34d399;
+      text-transform: uppercase;
+      text-decoration: none;
+      margin-bottom: 8px;
+    }
+ 
+    /* ── Ícone animado ── */
+    .music-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+    .music-icon svg {
+      fill: #34d399;
+    }
+    .music-icon.playing {
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.25); }
+      50%       { box-shadow: 0 0 0 14px rgba(52,211,153,0); }
+    }
+ 
+    /* ── Barras de onda (visíveis só ao tocar) ── */
+    .wave {
+      display: none;
+      align-items: flex-end;
+      gap: 3px;
+      height: 20px;
+      margin-bottom: 4px;
+    }
+    .wave.playing { display: flex; }
+    .wave span {
+      width: 3px;
+      border-radius: 2px;
+      background: #34d399;
+      animation: wave var(--d) ease-in-out infinite alternate;
+    }
+    @keyframes wave { from { height: 3px; } to { height: var(--h); } }
+ 
+    /* ── Player ── */
+    .player {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(52,211,153,0.15);
+      border-radius: 20px;
+      padding: 24px 20px 20px;
+    }
+ 
+    .progress-area {
+      margin-bottom: 18px;
+      cursor: pointer;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #34d399;
+      border-radius: 2px;
+      transition: width 0.3s linear;
+    }
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      font-variant-numeric: tabular-nums;
+    }
+ 
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+    .btn-skip {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: rgba(255,255,255,0.4);
+      transition: color 0.15s;
+      display: flex;
+      align-items: center;
+    }
+    .btn-skip:hover { color: #34d399; }
+ 
+    .btn-play {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #34d399;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-play:hover  { background: #2ebd87; }
+    .btn-play:active { transform: scale(0.95); }
+    .btn-play svg    { fill: #0d1a12; }
+ 
+    /* ── Botão baixar ── */
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(52,211,153,0.08);
+      border: 1px solid rgba(52,211,153,0.25);
+      color: #34d399;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-download:hover { background: rgba(52,211,153,0.15); }
+ 
+    /* ── Letra ── */
+    .letra-section { width: 100%; }
+    .btn-letra {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 16px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-letra:hover { background: rgba(255,255,255,0.07); }
+    .btn-letra .arrow { transition: transform 0.25s; opacity: 0.4; }
+    .btn-letra.open .arrow { transform: rotate(180deg); }
+ 
+    .letra-body {
+      display: none;
+      padding: 18px 16px;
+      font-size: 13px;
+      line-height: 2;
+      color: rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      white-space: pre-wrap;
+    }
+    .letra-body.open { display: block; }
+ 
+    /* ── Footer ── */
+    footer {
+      font-size: 11px;
+      color: rgba(255,255,255,0.15);
+      text-align: center;
+      margin-top: 8px;
+    }
+    footer a { color: #34d399; text-decoration: none; opacity: 0.6; }
+ 
+    audio { display: none; }
+  </style>
+</head>
+<body>
+<div class="content">
+ 
+  <a class="brand" href="https://abcmusic.tech" target="_blank">abcMusic</a>
+ 
+  <!-- Ícone animado -->
+  <div class="music-icon" id="musicIcon">
+    <svg width="32" height="32" viewBox="0 0 24 24">
+      <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+    </svg>
+  </div>
+ 
+  <!-- Barras de onda -->
+  <div class="wave" id="wave">
+    <span style="--d:.5s;--h:14px"></span>
+    <span style="--d:.7s;--h:20px"></span>
+    <span style="--d:.4s;--h:10px"></span>
+    <span style="--d:.6s;--h:18px"></span>
+    <span style="--d:.45s;--h:12px"></span>
+    <span style="--d:.65s;--h:16px"></span>
+    <span style="--d:.55s;--h:8px"></span>
+  </div>
+ 
+  <!-- Player -->
+  <div class="player">
+    <audio id="audio" src="<?= $audio_url ?>" preload="metadata"></audio>
+ 
+    <div class="progress-area" id="progressArea">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="time-row">
+        <span id="timeNow">0:00</span>
+        <span id="timeDur">0:00</span>
+      </div>
+    </div>
+ 
+    <div class="controls">
+      <button class="btn-skip" onclick="seek(-10)" aria-label="Voltar 10s">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/>
+        </svg>
+      </button>
+ 
+      <button class="btn-play" id="playBtn" onclick="togglePlay()" aria-label="Play/Pause">
+        <svg id="iconPlay" width="28" height="28" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="iconPause" width="28" height="28" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+ 
+      <button class="btn-skip" onclick="seek(10)" aria-label="Avançar 10s">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+ 
+  <!-- Baixar -->
+  <a class="btn-download" href="<?= $audio_url ?>" download>
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 3v13M7 12l5 5 5-5M3 21h18"/>
+    </svg>
+    Baixar música (MP3)
+  </a>
+ 
+  <!-- Letra -->
+  <?php if ($tem_letra): ?>
+  <div class="letra-section">
+    <button class="btn-letra" id="btnLetra" onclick="toggleLetra()">
+      <span>Ver letra completa</span>
+      <svg class="arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 9l6 6 6-6"/>
+      </svg>
+    </button>
+    <div class="letra-body" id="letraBody"><?= $letra ?></div>
+  </div>
+  <?php endif; ?>
+ 
+  <footer>Feito com 💚 pela <a href="https://abcmusic.tech" target="_blank">abcMusic</a></footer>
+ 
+</div>
+ 
+<script>
+  const audio      = document.getElementById('audio');
+  const fill       = document.getElementById('progressFill');
+  const timeNow    = document.getElementById('timeNow');
+  const timeDur    = document.getElementById('timeDur');
+  const iconPlay   = document.getElementById('iconPlay');
+  const iconPause  = document.getElementById('iconPause');
+  const musicIcon  = document.getElementById('musicIcon');
+  const wave       = document.getElementById('wave');
+ 
+  function fmt(s) {
+    s = Math.floor(s || 0);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+ 
+  audio.addEventListener('loadedmetadata', () => {
+    timeDur.textContent = fmt(audio.duration);
+  });
+ 
+  audio.addEventListener('timeupdate', () => {
+    if (!audio.duration) return;
+    fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+    timeNow.textContent = fmt(audio.currentTime);
+  });
+ 
+  audio.addEventListener('ended', () => setPlaying(false));
+ 
+  function setPlaying(playing) {
+    iconPlay.style.display  = playing ? 'none' : '';
+    iconPause.style.display = playing ? ''     : 'none';
+    musicIcon.classList.toggle('playing', playing);
+    wave.classList.toggle('playing', playing);
+  }
+ 
+  function togglePlay() {
+    if (audio.paused) { audio.play(); setPlaying(true); }
+    else              { audio.pause(); setPlaying(false); }
+  }
+ 
+  function seek(d) {
+    audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + d));
+  }
+ 
+  document.getElementById('progressArea').addEventListener('click', function(e) {
+    if (!audio.duration) return;
+    const r = this.getBoundingClientRect();
+    audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+  });
+ 
+  function toggleLetra() {
+    const btn  = document.getElementById('btnLetra');
+    const body = document.getElementById('letraBody');
+    btn.classList.toggle('open');
+    body.classList.toggle('open');
+    btn.querySelector('span').textContent =
+      btn.classList.contains('open') ? 'Esconder letra' : 'Ver letra completa';
+  }
+</script>
+</body>
+</html>
+ 
+

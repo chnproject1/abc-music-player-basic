@@ -34,37 +34,7 @@ if (empty($rows)) {
 }
 
 $m         = $rows[0];
-$audio_url = $m['audio_url'] ?? '';
-
-// ── Proxy de download (streaming) ──────────
-if (isset($_GET['action']) && $_GET['action'] === 'download' && $audio_url) {
-    header('Content-Type: audio/mpeg');
-    header('Content-Disposition: attachment; filename="musica-abcmusic.mp3"');
-    header('Cache-Control: no-cache');
-
-    $ch = curl_init($audio_url);
-    curl_setopt_array($ch, [
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_TIMEOUT        => 120,
-        CURLOPT_HEADERFUNCTION => function ($curl, $header) {
-            if (stripos($header, 'Content-Length:') === 0) {
-                header('Content-Length:' . substr($header, 15));
-            }
-            return strlen($header);
-        },
-        CURLOPT_WRITEFUNCTION  => function ($curl, $data) {
-            echo $data;
-            flush();
-            return strlen($data);
-        },
-    ]);
-    curl_exec($ch);
-    curl_close($ch);
-    exit;
-}
-
-$audio_url = htmlspecialchars($audio_url);
+$audio_url = htmlspecialchars($m['audio_url'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -221,25 +191,6 @@ $audio_url = htmlspecialchars($audio_url);
     .btn-play:active { transform: scale(0.95); }
     .btn-play svg    { fill: #0d1a12; }
 
-    /* ── Botão baixar ── */
-    .btn-download {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      padding: 14px;
-      border-radius: 12px;
-      background: rgba(52,211,153,0.08);
-      border: 1px solid rgba(52,211,153,0.25);
-      color: #34d399;
-      font-size: 14px;
-      font-weight: 600;
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-    .btn-download:hover { background: rgba(52,211,153,0.15); }
-
     /* ── Footer ── */
     footer {
       font-size: 11px;
@@ -309,14 +260,6 @@ $audio_url = htmlspecialchars($audio_url);
     </div>
   </div>
 
-  <!-- Baixar -->
-  <a class="btn-download" href="?action=download">
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 3v13M7 12l5 5 5-5M3 21h18"/>
-    </svg>
-    Baixar música (MP3)
-  </a>
-
   <footer>Feito com 💚 pela <a href="https://abcmusic.tech" target="_blank">abcMusic</a></footer>
 
 </div>
@@ -369,8 +312,6 @@ $audio_url = htmlspecialchars($audio_url);
     const r = this.getBoundingClientRect();
     audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
   });
-
-
 </script>
 </body>
 </html>

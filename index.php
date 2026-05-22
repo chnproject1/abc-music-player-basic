@@ -34,7 +34,34 @@ if (empty($rows)) {
 }
 
 $m         = $rows[0];
-$audio_url = htmlspecialchars($m['audio_url'] ?? '');
+$audio_url = $m['audio_url'] ?? '';
+
+// ── Proxy de download ──────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'download' && $audio_url) {
+    $ch = curl_init($audio_url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $fileData = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($fileData === false || $httpCode !== 200) {
+        http_response_code(502);
+        die('Erro ao baixar o arquivo.');
+    }
+
+    header('Content-Type: audio/mpeg');
+    header('Content-Disposition: attachment; filename="musica-abcmusic.mp3"');
+    header('Content-Length: ' . strlen($fileData));
+    header('Cache-Control: no-cache');
+    echo $fileData;
+    exit;
+}
+
+$audio_url = htmlspecialchars($audio_url);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -280,7 +307,7 @@ $audio_url = htmlspecialchars($m['audio_url'] ?? '');
   </div>
 
   <!-- Baixar -->
-  <a class="btn-download" href="<?= $audio_url ?>" download>
+  <a class="btn-download" href="?action=download">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M12 3v13M7 12l5 5 5-5M3 21h18"/>
     </svg>

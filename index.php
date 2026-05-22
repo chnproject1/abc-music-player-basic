@@ -36,28 +36,31 @@ if (empty($rows)) {
 $m         = $rows[0];
 $audio_url = $m['audio_url'] ?? '';
 
-// ── Proxy de download ──────────────────────
+// ── Proxy de download (streaming) ──────────
 if (isset($_GET['action']) && $_GET['action'] === 'download' && $audio_url) {
-    $ch = curl_init($audio_url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_SSL_VERIFYPEER => true,
-    ]);
-    $fileData = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($fileData === false || $httpCode !== 200) {
-        http_response_code(502);
-        die('Erro ao baixar o arquivo.');
-    }
-
     header('Content-Type: audio/mpeg');
     header('Content-Disposition: attachment; filename="musica-abcmusic.mp3"');
-    header('Content-Length: ' . strlen($fileData));
     header('Cache-Control: no-cache');
-    echo $fileData;
+
+    $ch = curl_init($audio_url);
+    curl_setopt_array($ch, [
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT        => 120,
+        CURLOPT_HEADERFUNCTION => function ($curl, $header) {
+            if (stripos($header, 'Content-Length:') === 0) {
+                header('Content-Length:' . substr($header, 15));
+            }
+            return strlen($header);
+        },
+        CURLOPT_WRITEFUNCTION  => function ($curl, $data) {
+            echo $data;
+            flush();
+            return strlen($data);
+        },
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
     exit;
 }
 

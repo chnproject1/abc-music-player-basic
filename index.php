@@ -1,102 +1,68 @@
-<?php
+[Options -Indexes
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]]
+
+[FROM php:8.2-apache
+ 
+RUN a2enmod rewrite
+ 
+COPY . /var/www/html/
+ 
+RUN { \
+    echo '<VirtualHost *:80>'; \
+    echo '    DocumentRoot /var/www/html'; \
+    echo '    <Directory /var/www/html>'; \
+    echo '        Options -Indexes'; \
+    echo '        AllowOverride None'; \
+    echo '        Require all granted'; \
+    echo '        RewriteEngine On'; \
+    echo '        RewriteCond %{REQUEST_FILENAME} !-f'; \
+    echo '        RewriteRule ^ index.php [L]'; \
+    echo '    </Directory>'; \
+    echo '</VirtualHost>'; \
+} > /etc/apache2/sites-available/000-default.conf
+ 
+EXPOSE 80]
+
+[<?php
 // ──────────────────────────────────────────
-//  abcMusic — Player de entrega
+//  abcMusic — Player básico de entrega
 //  play.abcmusic.tech/{uuid}
-//  play.abcmusic.tech/download/{uuid}
 // ──────────────────────────────────────────
 
 $path = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
-$parts = explode('/', $path, 2);
+$uuid = preg_replace('/[^a-f0-9\-]/i', '', $path);
 
-$isDownload = ($parts[0] === 'download');
-$rawUuid    = $isDownload ? ($parts[1] ?? '') : $parts[0];
-$uuid       = preg_replace('/[^a-f0-9\-]/i', '', $rawUuid);
-
-if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $uuid)) {
+if (strlen($uuid) !== 36) {
     http_response_code(404);
     die('Música não encontrada.');
 }
 
 define('SUPABASE_URL', 'https://baltzukuszagxcgkfrpi.supabase.co');
-define('SUPABASE_KEY', $_ENV['SUPABASE_KEY'] ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhbHR6dWt1c3phZ3hjZ2tmcnBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTg4MjMsImV4cCI6MjA5Mjg5NDgyM30.gcRHTzssV3OsbObvnpnbROrrpA8Dn6zZz9j_qDJdw0s');
+define('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJhbHR6dWt1c3phZ3hjZ2tmcnBpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTg4MjMsImV4cCI6MjA5Mjg5NDgyM30.gcRHTzssV3OsbObvnpnbROrrpA8Dn6zZz9j_qDJdw0s');
 
-function fetchMusic(string $uuid): ?array {
-    $api = SUPABASE_URL . '/rest/v1/presentes?uuid=eq.' . urlencode($uuid) . '&limit=1';
-    $ch  = curl_init($api);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => [
-            'apikey: '               . SUPABASE_KEY,
-            'Authorization: Bearer ' . SUPABASE_KEY,
-        ],
-    ]);
-    $resp = curl_exec($ch);
-    $err  = curl_errno($ch);
-    curl_close($ch);
+$api  = SUPABASE_URL . '/rest/v1/presentes?uuid=eq.' . urlencode($uuid) . '&limit=1';
+$ch   = curl_init($api);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER     => [
+        'apikey: '               . SUPABASE_KEY,
+        'Authorization: Bearer ' . SUPABASE_KEY,
+    ],
+]);
+$resp = curl_exec($ch);
+curl_close($ch);
 
-    if ($err) return null;
-    $rows = json_decode($resp, true);
-    return !empty($rows) ? $rows[0] : null;
-}
-
-$m = fetchMusic($uuid);
-
-if ($m === null) {
-    http_response_code(503);
-    die('Erro temporário. Tente novamente.');
-}
-
-if (empty($m)) {
+$rows = json_decode($resp, true);
+if (empty($rows)) {
     http_response_code(404);
     die('Música não encontrada.');
 }
 
-$audio_url = $m['audio_url'] ?? '';
-
-if (!filter_var($audio_url, FILTER_VALIDATE_URL)) {
-    http_response_code(500);
-    die('Erro interno.');
-}
-
-// ── Rota de download ──────────────────────
-if ($isDownload) {
-    $ch = curl_init($audio_url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS      => 5,
-        CURLOPT_TIMEOUT        => 60,
-    ]);
-    $fileData = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $mimeType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
-
-    if (!$fileData || $httpCode !== 200) {
-        http_response_code(502);
-        die('Não foi possível baixar o arquivo. Tente novamente.');
-    }
-
-    $ext      = 'mp3';
-    $mimeType = $mimeType ?: 'audio/mpeg';
-    if (str_contains($mimeType, 'wav'))  $ext = 'wav';
-    if (str_contains($mimeType, 'ogg'))  $ext = 'ogg';
-    if (str_contains($mimeType, 'flac')) $ext = 'flac';
-
-    $nome = isset($m['nome_presenteado'])
-        ? preg_replace('/[^a-zA-Z0-9\s\-_]/u', '', $m['nome_presenteado'])
-        : 'minha-musica';
-    $filename = 'abcMusic-' . trim($nome) . '.' . $ext;
-
-    header('Content-Type: ' . $mimeType);
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Content-Length: ' . strlen($fileData));
-    header('Cache-Control: no-store');
-    echo $fileData;
-    exit;
-}
-
-$audio_url_safe = htmlspecialchars($audio_url);
+$m         = $rows[0];
+$audio_url = htmlspecialchars($m['audio_url'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -131,6 +97,7 @@ $audio_url_safe = htmlspecialchars($audio_url);
       gap: 16px;
     }
 
+    /* ── Logo ── */
     .brand {
       font-size: 13px;
       font-weight: 600;
@@ -141,6 +108,7 @@ $audio_url_safe = htmlspecialchars($audio_url);
       margin-bottom: 8px;
     }
 
+    /* ── Ícone animado ── */
     .music-icon {
       width: 72px;
       height: 72px;
@@ -152,13 +120,18 @@ $audio_url_safe = htmlspecialchars($audio_url);
       justify-content: center;
       margin-bottom: 4px;
     }
-    .music-icon svg { fill: #34d399; }
-    .music-icon.playing { animation: pulse 1.8s ease-in-out infinite; }
+    .music-icon svg {
+      fill: #34d399;
+    }
+    .music-icon.playing {
+      animation: pulse 1.8s ease-in-out infinite;
+    }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.25); }
       50%       { box-shadow: 0 0 0 14px rgba(52,211,153,0); }
     }
 
+    /* ── Barras de onda (visíveis só ao tocar) ── */
     .wave {
       display: none;
       align-items: flex-end;
@@ -175,6 +148,7 @@ $audio_url_safe = htmlspecialchars($audio_url);
     }
     @keyframes wave { from { height: 3px; } to { height: var(--h); } }
 
+    /* ── Player ── */
     .player {
       width: 100%;
       background: rgba(255,255,255,0.04);
@@ -245,35 +219,7 @@ $audio_url_safe = htmlspecialchars($audio_url);
     .btn-play:active { transform: scale(0.95); }
     .btn-play svg    { fill: #0d1a12; }
 
-    /* ── Botão de Download ── */
-    .btn-download {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 13px 20px;
-      border-radius: 14px;
-      border: 1px solid rgba(52, 211, 153, 0.3);
-      background: rgba(52, 211, 153, 0.07);
-      color: #34d399;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    .btn-download:hover {
-      background: rgba(52, 211, 153, 0.15);
-      border-color: rgba(52, 211, 153, 0.5);
-    }
-    .btn-download:active { transform: scale(0.98); }
-    .btn-download.loading {
-      opacity: 0.6;
-      pointer-events: none;
-    }
-    .btn-download svg { flex-shrink: 0; }
-
+    /* ── Footer ── */
     footer {
       font-size: 11px;
       color: rgba(255,255,255,0.15);
@@ -290,12 +236,14 @@ $audio_url_safe = htmlspecialchars($audio_url);
 
   <a class="brand" href="https://abcmusic.tech" target="_blank">abcMusic</a>
 
+  <!-- Ícone animado -->
   <div class="music-icon" id="musicIcon">
     <svg width="32" height="32" viewBox="0 0 24 24">
       <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
     </svg>
   </div>
 
+  <!-- Barras de onda -->
   <div class="wave" id="wave">
     <span style="--d:.5s;--h:14px"></span>
     <span style="--d:.7s;--h:20px"></span>
@@ -306,8 +254,9 @@ $audio_url_safe = htmlspecialchars($audio_url);
     <span style="--d:.55s;--h:8px"></span>
   </div>
 
+  <!-- Player -->
   <div class="player">
-    <audio id="audio" src="<?= $audio_url_safe ?>" preload="metadata"></audio>
+    <audio id="audio" src="<?= $audio_url ?>" preload="metadata"></audio>
 
     <div class="progress-area" id="progressArea">
       <div class="progress-bar">
@@ -339,31 +288,19 @@ $audio_url_safe = htmlspecialchars($audio_url);
     </div>
   </div>
 
-  <!-- Botão de Download -->
-  <a id="btnDownload"
-     href="/download/<?= htmlspecialchars($uuid) ?>"
-     class="btn-download"
-     aria-label="Baixar música"
-     onclick="handleDownload(this)">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 16l-5-5 1.41-1.41L11 13.17V4h2v9.17l2.59-2.58L17 11l-5 5zm-7 3h14v2H5v-2z"/>
-    </svg>
-    Baixar minha música
-  </a>
-
   <footer>Feito com 💚 pela <a href="https://abcmusic.tech" target="_blank">abcMusic</a></footer>
 
 </div>
 
 <script>
-  const audio     = document.getElementById('audio');
-  const fill      = document.getElementById('progressFill');
-  const timeNow   = document.getElementById('timeNow');
-  const timeDur   = document.getElementById('timeDur');
-  const iconPlay  = document.getElementById('iconPlay');
-  const iconPause = document.getElementById('iconPause');
-  const musicIcon = document.getElementById('musicIcon');
-  const wave      = document.getElementById('wave');
+  const audio      = document.getElementById('audio');
+  const fill       = document.getElementById('progressFill');
+  const timeNow    = document.getElementById('timeNow');
+  const timeDur    = document.getElementById('timeDur');
+  const iconPlay   = document.getElementById('iconPlay');
+  const iconPause  = document.getElementById('iconPause');
+  const musicIcon  = document.getElementById('musicIcon');
+  const wave       = document.getElementById('wave');
 
   function fmt(s) {
     s = Math.floor(s || 0);
@@ -403,28 +340,6 @@ $audio_url_safe = htmlspecialchars($audio_url);
     const r = this.getBoundingClientRect();
     audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
   });
-
-  function handleDownload(el) {
-    el.classList.add('loading');
-    el.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="animation:spin 1s linear infinite">
-        <path d="M12 4V2A10 10 0 0 0 2 12h2a8 8 0 0 1 8-8z"/>
-      </svg>
-      Preparando download…`;
-
-    // Restaura o botão após 15s caso algo dê errado
-    setTimeout(() => {
-      el.classList.remove('loading');
-      el.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 16l-5-5 1.41-1.41L11 13.17V4h2v9.17l2.59-2.58L17 11l-5 5zm-7 3h14v2H5v-2z"/>
-        </svg>
-        Baixar minha música`;
-    }, 15000);
-  }
 </script>
-<style>
-  @keyframes spin { to { transform: rotate(360deg); } }
-</style>
 </body>
 </html>

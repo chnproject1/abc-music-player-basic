@@ -215,25 +215,6 @@ $download_url = '/download.php?url=' . urlencode($raw_url) . '&filename=' . urle
     .btn-whatsapp:active { transform: scale(0.98); }
     .btn-whatsapp:disabled { opacity: 0.6; cursor: default; }
 
-    .btn-download {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 11px 20px;
-      background: transparent;
-      border: 1px solid rgba(52,211,153,0.25);
-      border-radius: 14px;
-      color: rgba(255,255,255,0.5);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-      text-decoration: none;
-    }
-    .btn-download:hover { border-color: #34d399; color: #34d399; }
-
     /* ── Footer ── */
     footer {
       font-size: 11px;
@@ -310,11 +291,6 @@ $download_url = '/download.php?url=' . urlencode($raw_url) . '&filename=' . urle
     </svg>
     Enviar no WhatsApp
   </button>
-
-  <!-- Download via proxy PHP (funciona em mobile) -->
-  <a class="btn-download" href="<?= $download_url ?>">
-    ↓ Baixar MP3
-  </a>
 
   <footer>Feito com 💚 pela <a href="https://abcmusic.tech" target="_blank">abcMusic</a></footer>
 
